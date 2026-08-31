@@ -42,3 +42,11 @@ jobs:
           echo "GOOGLE_SERVICE_ACCOUNT_JSON length: ${#GOOGLE_SERVICE_ACCOUNT_JSON}"
           echo "first char: ${GOOGLE_SERVICE_ACCOUNT_JSON:0:1}"
           echo "QB_TOKEN length: ${#QB_TOKEN}"
+
+      - name: Sync MASTER tab
+        env:
+          QB_REALM: ${{ secrets.QB_REALM }}
+          QB_TOKEN: ${{ secrets.QB_TOKEN }}
+          SHEET_ID: ${{ secrets.SPIFF_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: python spiff_master_sync.py
