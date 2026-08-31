@@ -59,7 +59,10 @@ IGNORE_REPS = {
     "", "Abe Grazi-1", "Open Rep", "Colleen Jung (Seung Hyun Jung)",
     "Conor Borthwick", "Dusan Sekulic", "Jeffery Lev", "Marijana Valic",
     "Tarek Elnicklawy", "Priscilla Guel", "Makar Cheltsov", "Sean Hsu",
-    "Thomas Cooke", "Filip Maric", "Johane Ismond",
+        "Thomas Cooke", "Filip Maric", "Johane Ismond",
+    # apps-only, no funded volume, all gone quiet before July 2026
+    "Cashana Diggs", "Jarrod Silver", "Jean Hugues Toussaint",
+    "Junier Frias", "Kyle Uzelac",
 }
 
 # Spiff rule: an app counts unless the deal landed in one of these.
