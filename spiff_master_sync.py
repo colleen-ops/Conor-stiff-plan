@@ -11,10 +11,10 @@ so a new qualified app or a new funding shows up on the right month tab on the
 next run with zero edits.
 
 Env (GitHub Secrets):
-  QB_REALM                  ifundco.quickbase.com
-  QB_TOKEN                  QuickBase user token
-  SHEET_ID                  1ftADhQWlX2xdhJ-7HpAgs_iSA_AtNHTYlcZh9Izy8BQ
-  GOOGLE_SERVICE_ACCOUNT_JSON   service-account JSON (same one spiff_sync.py uses)
+  QB_REALM                      ifundco.quickbase.com
+  QB_TOKEN                      QuickBase user token, scoped to app bn5gjsf5n
+  GOOGLE_SERVICE_ACCOUNT_JSON   service-account key JSON, whole file
+  SPIFF_SHEET_ID                optional; falls back to the constant below
 """
 
 import os
@@ -29,7 +29,9 @@ from googleapiclient.discovery import build
 
 QB_REALM = os.environ["QB_REALM"]
 QB_TOKEN = os.environ["QB_TOKEN"]
-SHEET_ID = os.environ["SHEET_ID"]
+SHEET_ID = os.environ.get(
+    "SPIFF_SHEET_ID", "1ftADhQWlX2xdhJ-7HpAgs_iSA_AtNHTYlcZh9Izy8BQ"
+)
 
 DEALS = "bn5gjsf77"
 OFFERS = "bn5gjsf9c"
@@ -49,6 +51,15 @@ ROSTER = {
     "Paul Garza": "Paul",
     "Mackenson Jean": "Mackenson",
     "Bill Buescher": "Bill",
+}
+
+# QB accounts that are deliberately not on the spiff tabs. Anything with real
+# activity that is in neither ROSTER nor here will crash the run on purpose.
+IGNORE_REPS = {
+    "", "Abe Grazi-1", "Open Rep", "Colleen Jung (Seung Hyun Jung)",
+    "Conor Borthwick", "Dusan Sekulic", "Jeffery Lev", "Marijana Valic",
+    "Tarek Elnicklawy", "Priscilla Guel", "Makar Cheltsov", "Sean Hsu",
+    "Thomas Cooke", "Filip Maric", "Johane Ismond",
 }
 
 # Spiff rule: an app counts unless the deal landed in one of these.
@@ -80,8 +91,7 @@ def qb_query(table_id, select, where):
         }
         r = requests.post(url, headers=headers, json=body, timeout=90)
         r.raise_for_status()
-        payload = r.json()
-        recs = payload.get("data", [])
+        recs = r.json().get("data", [])
         out.extend(recs)
         if len(recs) < 1000:
             return out
@@ -100,7 +110,7 @@ def build_rows():
     jan1 = f"01-01-{YEAR}"
     rows = []
 
-    # --- funded offers: fid 51 Funded Date, 27 Funded Amount, 54 RENEWAL?,
+    # --- funded offers: 51 Funded Date, 27 Funded Amount, 54 RENEWAL?,
     #     16 Rep - Name (verified identical to Deals fid 145 Deal Rep)
     offers = qb_query(
         OFFERS,
@@ -128,7 +138,7 @@ def build_rows():
             "RENEWAL" if is_renewal else "NEW BIZ",
         ])
 
-    # --- deals created: fid 1 Date Created, 97 Status, 145 Deal Rep
+    # --- deals created: 1 Date Created, 97 Status, 145 Deal Rep
     deals = qb_query(
         DEALS,
         ["3", "6", "652", "145", "97", "1"],
@@ -157,6 +167,30 @@ def build_rows():
 
     rows.sort(key=lambda r: (r[1], r[0], r[2]))
     return rows
+
+
+def assert_roster_covers(rows):
+    """Crash if a rep produced spiff-eligible activity but maps to no sheet row.
+
+    Without this, an unmapped or renamed rep silently reads as 0 on the tab,
+    which is indistinguishable from a genuinely bad month.
+    """
+    orphans = {}
+    for r in rows:
+        if r[2] or r[3] in IGNORE_REPS:
+            continue
+        eligible = (r[0] == "FUNDED" and r[11] == "NEW BIZ") or (
+            r[0] == "APP" and r[11] == "QUALIFIED"
+        )
+        if eligible:
+            orphans[r[3]] = orphans.get(r[3], 0) + 1
+    if orphans:
+        detail = ", ".join(f"{k} ({v})" for k, v in sorted(orphans.items()))
+        raise SystemExit(
+            f"ROSTER GAP — unmapped reps with spiff-eligible activity: {detail}\n"
+            f"Add each to ROSTER (and column A on the month tabs), "
+            f"or to IGNORE_REPS if they should not be scored."
+        )
 
 
 # ---------------------------------------------------------------- sheets
@@ -197,8 +231,12 @@ def write_master(svc, rows):
 
 if __name__ == "__main__":
     rows = build_rows()
+    assert_roster_covers(rows)
     svc = sheets_service()
     ensure_tab(svc)
     write_master(svc, rows)
     funded = sum(1 for r in rows if r[0] == "FUNDED")
-    print(f"MASTER written: {len(rows)} rows ({funded} funded offers, {len(rows)-funded} apps)")
+    print(
+        f"MASTER written: {len(rows)} rows "
+        f"({funded} funded offers, {len(rows) - funded} apps)"
+    )
